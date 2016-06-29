@@ -38,16 +38,22 @@ from tensorflow.python.ops.control_flow_ops import cond
 
 _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 
-def batch_norm(x, deterministic, alpha=0.9, scope='bn'):
+def batch_norm(x, deterministic, alpha=0.9, shift=True, scope='bn'):
     with vs.variable_scope(scope):
         dtype = x.dtype
         input_shape = x.get_shape().as_list()
         feat_dim = input_shape[-1]
         axes = range(len(input_shape)-1)
         
-        beta = vs.get_variable(
+        if shift:
+            beta = vs.get_variable(
                     scope+"_beta", shape=[feat_dim],
                     initializer=init_ops.zeros_initializer, dtype=dtype)
+        else:
+            beta = vs.get_variable(
+                scope+"_beta", shape=[feat_dim],
+                initializer=init_ops.zeros_initializer, 
+                dtype=dtype, trainable=False)
         
         gamma = vs.get_variable(
                     scope+"_gamma", shape=[feat_dim],
@@ -71,22 +77,14 @@ def batch_norm(x, deterministic, alpha=0.9, scope='bn'):
         
         batch_mean, batch_var = moments(x, axes, name=scope+'_moments')
         
-        def update():
-            current_mean, current_var = cond(math_ops.greater(counter, zero_cnt), 
-                                       lambda: (mean, var),
-                                       lambda: (batch_mean, batch_var))
-            use_mean = (1-alpha) * batch_mean + alpha * current_mean
-            use_var = (1-alpha) * batch_var + alpha * current_var
-            cnt = counter + 1
-            return use_mean, use_var, cnt
+        mean, var = cond(math_ops.equal(counter, zero_cnt), lambda: (batch_mean, batch_var), 
+                         lambda: (mean, var))
         
-        def remain():
-            current_mean, current_var = cond(math_ops.greater(counter, zero_cnt), 
-                                       lambda: (mean, var),
-                                       lambda: (batch_mean, batch_var))
-            return current_mean, current_var, counter
          
-        mean, var, counter = cond(deterministic, remain, update)
+        mean, var, counter = cond(deterministic, lambda: (mean, var, counter), 
+                                 lambda: ((1-alpha) * batch_mean + alpha * mean, 
+                                         (1-alpha) * batch_var + alpha * var, 
+                                         counter + 1))
         normed = batch_normalization(x, mean, var, beta, gamma, 1e-8)
     return normed
 
@@ -214,9 +212,9 @@ class LSTMCell(RNNCell):
             # i = input_gate, j = new_input, f = forget_gate, o = output_gate
             if self._bn:
                 lstm_matrix_i = batch_norm(math_ops.matmul(inputs, concat_w_i), self._deterministic,
-                                           scope=scope_name+'bn_i')
+                                           shift=False, scope=scope_name+'bn_i')
                 lstm_matrix_r = batch_norm(math_ops.matmul(m_prev, concat_w_r), self._deterministic,
-                                           scope=scope_name+'bn_r')
+                                           shift=False, scope=scope_name+'bn_r')
                 lstm_matrix = nn_ops.bias_add(math_ops.add(lstm_matrix_i, lstm_matrix_r), b)
 
             else:
