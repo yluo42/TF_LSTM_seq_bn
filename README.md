@@ -5,7 +5,7 @@ Sequential batch normalization for LSTM written in Tensorflow. Implemented
 
 In `LSTMCell` class, set `bn` to 1/2/3 to open batch normalization. Default is `bn=0`. Set `bn=1` only apply batch norm on `WX`, `bn=2` to apply batch norm on both `WX` and `Wh`, `bn=3` to apply batch norm on `WX`, `Wh` and `c`.
 
-Be careful - set `bn` larger than 1 might be extremely slow in large dataset!
+Be careful - set `bn` larger than 1 might be extremely slow in deep LSTM models!
 
 ## Usage
 
