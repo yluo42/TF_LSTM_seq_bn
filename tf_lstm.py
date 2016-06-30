@@ -93,7 +93,7 @@ class LSTMCell(RNNCell):
                  cell_clip=None, initializer=None, 
                  num_proj=None, num_unit_shards=1, 
                  num_proj_shards=1, forget_bias=1.0, 
-                 bn=False, return_gate=False,
+                 bn=0, return_gate=False,
                  deterministic=None, activation=tanh):
         """
         Initialize the parameters for an LSTM cell.
@@ -115,8 +115,8 @@ class LSTMCell(RNNCell):
             in order to reduce the scale of forgetting at the beginning of
             the training.
           return_gate: bool, set true to return the values of the gates.
-          bn: bool, set True to enable sequence-wise batch normalization. Implemented
-            according to arXiv:1603.09025
+          bn: int, set 1,2 or 3 to enable sequence-wise batch normalization with
+            different level. Implemented according to arXiv:1603.09025
           deterministic: Tensor, control training and testing phase, decide whether to
             open batch normalization.
           activation: Activation function of the inner states.
@@ -213,8 +213,12 @@ class LSTMCell(RNNCell):
             if self._bn:
                 lstm_matrix_i = batch_norm(math_ops.matmul(inputs, concat_w_i), self._deterministic,
                                            shift=False, scope=scope_name+'bn_i')
-                lstm_matrix_r = batch_norm(math_ops.matmul(m_prev, concat_w_r), self._deterministic,
-                                           shift=False, scope=scope_name+'bn_r')
+                if self._bn > 1:
+                    lstm_matrix_r = batch_norm(math_ops.matmul(m_prev, concat_w_r), self._deterministic,
+                                               shift=False, scope=scope_name+'bn_r')
+                else:
+                    lstm_matrix_r = math_ops.matmul(m_prev, concat_w_r)
+                
                 lstm_matrix = nn_ops.bias_add(math_ops.add(lstm_matrix_i, lstm_matrix_r), b)
 
             else:
@@ -245,13 +249,13 @@ class LSTMCell(RNNCell):
                 # pylint: enable=invalid-unary-operand-type
 
             if self._use_peepholes:
-                if self._bn:
+                if self._bn > 2:
                     m = sigmoid(o + w_o_diag * c) * self._activation(batch_norm(c, self._deterministic,
                                                                                 scope=scope_name+'bn_m'))
                 else:
                     m = sigmoid(o + w_o_diag * c) * self._activation(c)
             else:
-                if self._bn:
+                if self._bn > 2:
                     m = sigmoid(o) * self._activation(batch_norm(c, self._deterministic,
                                                                  scope=scope_name+'bn_m'))
                 else:
